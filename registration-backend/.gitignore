@@ -1,0 +1,15 @@
+.env
+*env
+env.*
+*.env
+*.local
+.env.local
+.env.*.local
+.env.test.local
+.env.production.local
+.env.development.local
+.env.staging.local
+.env.qa.local
+.env.production
+.env.development
+.env.staging
