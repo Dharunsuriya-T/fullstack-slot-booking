@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
-export default function FormResponses({ formId, onBack }) {
+export default function FormResponses() {
+  const { formId } = useParams();
+  const navigate = useNavigate();
   const [slots, setSlots] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -149,7 +153,7 @@ export default function FormResponses({ formId, onBack }) {
   async function handleSendEmails() {
     if (sending || totalSelected === 0) return;
     if (!subject.trim() || !message.trim()) {
-      alert('Subject and message are required');
+      setError('Subject and message are required');
       return;
     }
 
@@ -188,7 +192,7 @@ export default function FormResponses({ formId, onBack }) {
         message: result.message || 'Emails processed'
       });
     } catch (err) {
-      alert(err.message);
+      setError(err.message || 'Failed to send emails');
     } finally {
       setSending(false);
     }
@@ -202,7 +206,7 @@ export default function FormResponses({ formId, onBack }) {
     return (
       <div className="p-8 max-w-7xl mx-auto">
         <button
-          onClick={onBack}
+          onClick={() => navigate('/admin')}
           className="text-indigo-600 mb-4"
         >
           ← Back
@@ -270,11 +274,17 @@ export default function FormResponses({ formId, onBack }) {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <button
-        onClick={onBack}
-        className="text-indigo-600 mb-4"
+        onClick={() => navigate('/admin')}
+        className="text-indigo-600 mb-6"
       >
         ← Back
       </button>
+
+      {error && (
+        <div className="mb-6 border border-red-200 bg-red-50 text-red-800 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-semibold">

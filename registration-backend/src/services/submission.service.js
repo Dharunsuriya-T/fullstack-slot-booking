@@ -84,6 +84,27 @@ async function submitForm({ formId, studentId, slotId, answers }) {
 
     const student = studentResult.rows[0];
 
+    // 4b. Enforce optional slot segmentation
+    if (slot.gender || slot.residence_type) {
+      if (!student.gender || !student.residence_type) {
+        throw new Error(
+          'Please complete your profile (gender and residence type) to book this slot'
+        );
+      }
+
+      if (slot.gender && String(student.gender).toUpperCase() !== String(slot.gender).toUpperCase()) {
+        throw new Error('Selected slot is not available for your category');
+      }
+
+      if (
+        slot.residence_type &&
+        String(student.residence_type).toUpperCase() !==
+          String(slot.residence_type).toUpperCase()
+      ) {
+        throw new Error('Selected slot is not available for your category');
+      }
+    }
+
     // 4. Build answers map
     const answersMap = {};
     for (const ans of answers) {

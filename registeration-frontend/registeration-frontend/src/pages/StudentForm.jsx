@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { getFormDetails, getSlots, submitForm } from '../api/student';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  getFormDetails,
+  getSlots,
+  submitForm,
+  updateStudentProfile
+} from '../api/student';
 
-export default function StudentForm({ formId, onBack }) {
+export default function StudentForm() {
+  const { formId } = useParams();
+  const navigate = useNavigate();
   const DRAFT_KEY = `student_form_draft_${formId}`;
   const [data, setData] = useState(null);
   const [slots, setSlots] = useState([]);
@@ -10,17 +18,32 @@ export default function StudentForm({ formId, onBack }) {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [profileGender, setProfileGender] = useState('');
+  const [profileResidence, setProfileResidence] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
   useEffect(() => {
     async function load() {
       try {
         const formData = await getFormDetails(formId);
-        const slotData = await getSlots(formId);
-
         setData(formData);
+
+        const slotData = await getSlots(formId);
         setSlots(slotData);
       } catch (err) {
         console.error(err);
-        alert('Failed to load form');
+        if (
+          String(err.message || '').includes(
+            'Please complete your profile (gender and residence type)'
+          )
+        ) {
+          setShowProfilePrompt(true);
+        } else {
+          setError('Failed to load form');
+        }
       } finally {
         setLoading(false);
       }
@@ -74,6 +97,32 @@ export default function StudentForm({ formId, onBack }) {
 
   const { form, questions, eligibility_rules } = data;
 
+  async function handleSaveProfile() {
+    if (savingProfile) return;
+    if (!profileGender || !profileResidence) {
+      setError('Please select both gender and residence type');
+      return;
+    }
+
+    try {
+      setError('');
+      setSuccess('');
+      setSavingProfile(true);
+      await updateStudentProfile({
+        gender: profileGender,
+        residence_type: profileResidence
+      });
+
+      const slotData = await getSlots(formId);
+      setSlots(slotData);
+      setShowProfilePrompt(false);
+    } catch (err) {
+      setError(err.message || 'Failed to save profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   /* =========================
      VALIDATION
   ========================= */
@@ -94,6 +143,8 @@ export default function StudentForm({ formId, onBack }) {
 
     try {
       setSubmitting(true);
+      setError('');
+      setSuccess('');
 
       await submitForm(formId, {
         slot_id: selectedSlot,
@@ -111,10 +162,10 @@ export default function StudentForm({ formId, onBack }) {
         // ignore
       }
 
-      alert('Submission successful');
-      onBack();
+      setSuccess('Submission successful');
+      navigate('/');
     } catch (err) {
-      alert(err.message || 'Submission failed');
+      setError(err.message || 'Submission failed');
     } finally {
       setSubmitting(false);
     }
@@ -175,6 +226,67 @@ export default function StudentForm({ formId, onBack }) {
 
   return (
     <div className="min-h-screen p-8 max-w-3xl mx-auto">
+      {error && (
+        <div className="mb-6 border border-red-200 bg-red-50 text-red-800 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-6 border border-green-200 bg-green-50 text-green-800 px-4 py-3 rounded">
+          {success}
+        </div>
+      )}
+      {showProfilePrompt && (
+        <div className="mb-6 p-4 border rounded bg-yellow-50">
+          <h3 className="font-semibold mb-2">Complete your profile</h3>
+          <p className="text-sm text-gray-700 mb-3">
+            This test uses separate slot timings for different categories. Please
+            choose your details to view available slots.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Residence type
+              </label>
+              <select
+                className="w-full border rounded px-3 py-2"
+                value={profileResidence}
+                onChange={e => setProfileResidence(e.target.value)}
+              >
+                <option value="">Select</option>
+                <option value="DAY_SCHOLAR">Day Scholar</option>
+                <option value="HOSTELLER">Hosteller</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Gender
+              </label>
+              <select
+                className="w-full border rounded px-3 py-2"
+                value={profileGender}
+                onChange={e => setProfileGender(e.target.value)}
+              >
+                <option value="">Select</option>
+                <option value="BOY">Boy</option>
+                <option value="GIRL">Girl</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={savingProfile}
+            className="px-4 py-2 rounded bg-indigo-600 text-white disabled:bg-gray-300 disabled:text-gray-600"
+          >
+            {savingProfile ? 'Saving…' : 'Save & Load Slots'}
+          </button>
+        </div>
+      )}
+
       <button
         onClick={onBack}
         className="text-indigo-600 mb-6"

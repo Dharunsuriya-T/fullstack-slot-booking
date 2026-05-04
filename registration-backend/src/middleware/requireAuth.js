@@ -13,7 +13,7 @@ async function requireAuth(req, res, next) {
 
     const studentResult = await pool.query(
       `
-      SELECT id, email, name, department, year
+      SELECT id, email, name, department, year, gender, residence_type, email_verified
       FROM students
       WHERE id = $1
       `,

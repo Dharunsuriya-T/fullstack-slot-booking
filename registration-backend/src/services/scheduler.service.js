@@ -120,11 +120,33 @@ class SchedulerService {
     let client = null;
     try {
       client = await pool.connect();
+
+      const tableResult = await client.query(
+        `
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'eligibility_cache'
+        LIMIT 1
+        `
+      );
+
+      if (tableResult.rows.length === 0) {
+        return;
+      }
+
       await client.query(`
         DELETE FROM eligibility_cache 
         WHERE updated_at < NOW() - INTERVAL '24 hours'
       `);
     } catch (error) {
+      const msg = String(error && (error.message || error) ? (error.message || error) : '');
+      if (
+        (error && error.code === '42P01') ||
+        (msg.includes('eligibility_cache') && msg.includes('does not exist'))
+      ) {
+        return;
+      }
       console.error('Error cleaning up eligibility cache:', error);
     } finally {
       if (client) client.release();
