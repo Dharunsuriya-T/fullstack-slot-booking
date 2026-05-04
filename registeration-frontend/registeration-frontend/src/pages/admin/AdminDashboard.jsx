@@ -1,23 +1,35 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const DRAFT_KEY = 'adminDraftProgress';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
-export default function AdminDashboard({
-  onCreateNew,
-  onResumeDraft,
-  onOpenResponses
-}) {
+export default function AdminDashboard({ onEditForm }) {
+  const navigate = useNavigate();
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   async function load() {
-    const res = await fetch(
-      'http://localhost:3000/admin/forms',
-      { credentials: 'include' }
-    );
-    const data = await res.json();
-    setForms(data.forms || []);
-    setLoading(false);
+    try {
+      setError('');
+      const res = await fetch(
+        `${API_BASE}/admin/forms`,
+        { credentials: 'include' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to load forms');
+        setForms([]);
+      } else {
+        setForms(data.forms || []);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load forms');
+      setForms([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -25,29 +37,65 @@ export default function AdminDashboard({
   }, []);
 
   async function publish(id) {
-    await fetch(
-      `http://localhost:3000/admin/forms/${id}/publish`,
+    setError('');
+    const res = await fetch(
+      `${API_BASE}/admin/forms/${id}/publish`,
       { method: 'POST', credentials: 'include' }
     );
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || 'Failed to publish');
+      return;
+    }
     load();
   }
 
   async function close(id) {
-    await fetch(
-      `http://localhost:3000/admin/forms/${id}/close`,
+    setError('');
+    const res = await fetch(
+      `${API_BASE}/admin/forms/${id}/close`,
       { method: 'POST', credentials: 'include' }
     );
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || 'Failed to close');
+      return;
+    }
     load();
   }
 
   async function del(id) {
     if (!confirm('Delete draft form?')) return;
 
-    await fetch(
-      `http://localhost:3000/admin/forms/${id}`,
+    setError('');
+    const res = await fetch(
+      `${API_BASE}/admin/forms/${id}`,
       { method: 'DELETE', credentials: 'include' }
     );
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || 'Failed to delete');
+      return;
+    }
     load();
+  }
+
+  async function handleLogout() {
+    try {
+      setError('');
+      const res = await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Logout failed');
+        return;
+      }
+      window.location.reload();
+    } catch (err) {
+      setError(err.message || 'Logout failed');
+    }
   }
 
   if (loading) return <p className="p-8">Loading…</p>;
@@ -59,13 +107,29 @@ export default function AdminDashboard({
           Admin Dashboard
         </h1>
 
-        <button
-          onClick={onCreateNew}
-          className="px-4 py-2 rounded bg-indigo-600 text-white"
-        >
-          + Create Form
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate('/admin/create')}
+            className="px-4 py-2 rounded bg-indigo-600 text-white"
+          >
+            + Create Form
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer"
+          >
+            Logout
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div className="mb-6 border border-red-200 bg-red-50 text-red-800 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       {forms.length === 0 ? (
         <p>No forms yet.</p>
@@ -80,9 +144,9 @@ export default function AdminDashboard({
                   DRAFT_KEY,
                   JSON.stringify({ formId: f.id })
                 );
-                onResumeDraft(f.id);
+                { onEditForm(f.id); navigate('/admin/create'); }
               } else {
-                onOpenResponses(f.id);
+                navigate(`/admin/responses/${f.id}`);
               }
             }}
           >

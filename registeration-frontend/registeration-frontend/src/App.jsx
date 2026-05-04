@@ -1,22 +1,22 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-import Login from './pages/login';
-import StudentDashboard from './pages/StudentDashboard';
-import StudentForm from './pages/StudentForm';
-
-import AdminRoot from './pages/admin/adminRoot';
+const Login = lazy(() => import('./pages/Login'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const StudentForm = lazy(() => import('./pages/StudentForm'));
+const AdminRoot = lazy(() => import('./pages/admin/adminRoot'));
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [activeFormId, setActiveFormId] = useState(null);
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
   useEffect(() => {
     async function loadMe() {
       try {
         const res = await fetch(
-          'http://localhost:3000/auth/me',
+          `${API_BASE}/auth/me`,
           { credentials: 'include' }
         );
 
@@ -33,28 +33,24 @@ function App() {
   }, []);
 
   if (loading) return <p>Loading…</p>;
-  if (!user) return <Login />;
-
-  /* ✅ ADMIN */
-  if (user.role === 'admin') {
-    return <AdminRoot />;
-  }
-
-  /* ✅ STUDENT */
-  if (activeFormId) {
-    return (
-      <StudentForm
-        formId={activeFormId}
-        onBack={() => setActiveFormId(null)}
-      />
-    );
-  }
 
   return (
-    <StudentDashboard
-      user={user}
-      onOpenForm={setActiveFormId}
-    />
+    <Router>
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center">
+            <p className="text-gray-500">Loading…</p>
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+          <Route path="/" element={user ? (user.role === 'admin' ? <AdminRoot /> : <StudentDashboard user={user} />) : <Navigate to="/login" />} />
+          <Route path="/form/:formId" element={user ? <StudentForm /> : <Navigate to="/login" />} />
+          <Route path="/admin/*" element={user && user.role === 'admin' ? <AdminRoot /> : <Navigate to="/" />} />
+        </Routes>
+      </Suspense>
+    </Router>
   );
 }
 

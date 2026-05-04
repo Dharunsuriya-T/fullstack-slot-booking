@@ -242,10 +242,28 @@ async function createSlot({
   slot_date,
   start_time,
   end_time,
-  max_capacity
+  max_capacity,
+  gender,
+  residence_type
 }) {
   if (!slot_date || !start_time || !end_time || !max_capacity) {
     throw new Error('Invalid slot data');
+  }
+
+  const normalizedGender = gender ? String(gender).toUpperCase() : null;
+  const normalizedResidence = residence_type
+    ? String(residence_type).toUpperCase()
+    : null;
+
+  const allowedGenders = new Set(['BOY', 'GIRL']);
+  const allowedResidence = new Set(['HOSTELLER', 'DAY_SCHOLAR']);
+
+  if (normalizedGender && !allowedGenders.has(normalizedGender)) {
+    throw new Error('Invalid slot gender');
+  }
+
+  if (normalizedResidence && !allowedResidence.has(normalizedResidence)) {
+    throw new Error('Invalid slot residence_type');
   }
 
   // Ensure form exists and is still in DRAFT before inserting a slot
@@ -266,12 +284,20 @@ async function createSlot({
   const result = await pool.query(
     `
     INSERT INTO slots
-      (form_id, slot_date, start_time, end_time, max_capacity)
+      (form_id, slot_date, start_time, end_time, max_capacity, gender, residence_type)
     VALUES
-      ($1, $2, $3, $4, $5)
+      ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
     `,
-    [form_id, slot_date, start_time, end_time, max_capacity]
+    [
+      form_id,
+      slot_date,
+      start_time,
+      end_time,
+      max_capacity,
+      normalizedGender,
+      normalizedResidence
+    ]
   );
 
   return result.rows[0];

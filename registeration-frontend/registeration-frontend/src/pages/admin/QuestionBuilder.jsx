@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const API = 'http://localhost:3000';
+const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 export default function QuestionBuilder({ formId, onBack, onNext }) {
   const STORAGE_KEY = `draft_questions_${formId}`;
@@ -9,6 +9,7 @@ export default function QuestionBuilder({ formId, onBack, onNext }) {
   const [text, setText] = useState('');
   const [type, setType] = useState('TEXT');
   const [required, setRequired] = useState(false);
+  const [error, setError] = useState('');
 
   // Optional eligibility
   const [eligibilityEnabled, setEligibilityEnabled] = useState(false);
@@ -28,9 +29,11 @@ export default function QuestionBuilder({ formId, onBack, onNext }) {
 
   function addQuestion() {
     if (!text.trim()) {
-      alert('Question text required');
+      setError('Question text required');
       return;
     }
+
+    setError('');
 
     setQuestions(prev => [
       ...prev,
@@ -70,7 +73,7 @@ export default function QuestionBuilder({ formId, onBack, onNext }) {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error);
+        setError(data.error);
         return;
       }
 
@@ -93,14 +96,21 @@ export default function QuestionBuilder({ formId, onBack, onNext }) {
     }
 
     localStorage.removeItem(STORAGE_KEY);
+    setError('');
     onNext();
   }
 
   return (
-    <div className="min-h-screen p-8 max-w-3xl mx-auto">
-      <button onClick={onBack} className="text-indigo-600 mb-4">
+    <div className="p-8 max-w-3xl mx-auto">
+      <button onClick={onBack} className="text-indigo-600 mb-6">
         ← Back
       </button>
+
+      {error && (
+        <div className="mb-6 border border-red-200 bg-red-50 text-red-800 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       <h1 className="text-3xl font-semibold mb-6">
         Add Questions

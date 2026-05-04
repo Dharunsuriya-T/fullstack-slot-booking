@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-const API = 'http://localhost:3000/admin';
-const STUDENT_API = 'http://localhost:3000/student';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API = `${API_BASE}/admin`;
+const STUDENT_API = `${API_BASE}/student`;
 const DRAFT_KEY = 'adminDraftProgress';
 const DEPARTMENT_OPTIONS = [
   'CSE',
@@ -13,7 +15,8 @@ const DEPARTMENT_OPTIONS = [
   'MECH'
 ];
 
-export default function CreateFormWizard({ onExit, formId: initialFormId }) {
+export default function CreateFormWizard({ formId: initialFormId }) {
+  const navigate = useNavigate();
   /* ======================
      WIZARD STATE
   ====================== */
@@ -37,6 +40,9 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   const [hasExistingDepartmentRule, setHasExistingDepartmentRule] =
     useState(false);
 
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
   /* ======================
      SLOTS
   ====================== */
@@ -45,6 +51,10 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [segmentedSlotsEnabled, setSegmentedSlotsEnabled] = useState(false);
+  const [slotResidenceType, setSlotResidenceType] = useState('');
+  const [slotGender, setSlotGender] = useState('');
+  const [activeSlotSegment, setActiveSlotSegment] = useState('');
 
   /* ======================
      QUESTIONS
@@ -157,14 +167,27 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
         }
 
         if (slotsRes.ok) {
-          const jsonSlots = await slotsRes.json();
-          if (Array.isArray(jsonSlots.slots)) {
-            setSlots(jsonSlots.slots);
+          const json = await slotsRes.json();
+          if (Array.isArray(json.slots)) {
+            setSlots(json.slots);
+
+            const hasSegmented = json.slots.some(
+              s => s && (s.gender || s.residence_type)
+            );
+            if (hasSegmented) {
+              setSegmentedSlotsEnabled(true);
+              const first = json.slots.find(s => s && (s.gender || s.residence_type));
+              if (first) {
+                const seg = `${first.residence_type || ''}_${first.gender || ''}`;
+                setActiveSlotSegment(seg);
+                setSlotResidenceType(first.residence_type || '');
+                setSlotGender(first.gender || '');
+              }
+            }
           }
         }
-      } catch (err) {
-        // For admins, it's better to log silently than block the flow
-        console.error('Failed to load existing form data', err);
+      } catch {
+        // ignore loading errors
       }
     }
 
@@ -196,7 +219,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   ====================== */
   async function createDraft() {
     if (!title.trim()) {
-      alert('Title required');
+      setError('Title required');
       return;
     }
 
@@ -220,7 +243,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error);
+      setError(data.error);
       return;
     }
 
@@ -237,8 +260,27 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   ====================== */
   async function addSlot() {
     if (!slotDate || !startTime || !endTime || !capacity) {
-      alert('Fill all slot fields');
+      setError('Fill all slot fields');
       return;
+    }
+
+    let residence_type = '';
+    let gender = '';
+
+    if (segmentedSlotsEnabled) {
+      if (activeSlotSegment) {
+        const parts = String(activeSlotSegment).split('_');
+        residence_type = parts[0] || '';
+        gender = parts[1] || '';
+      } else {
+        residence_type = slotResidenceType;
+        gender = slotGender;
+      }
+
+      if (!residence_type || !gender) {
+        setError('Select a segment (residence type and gender) for this slot');
+        return;
+      }
     }
 
     const res = await fetch(
@@ -252,14 +294,19 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
           max_capacity: Number(capacity),
           start_time: startTime,
           end_time: endTime,
-          
+          ...(segmentedSlotsEnabled
+            ? {
+                residence_type,
+                gender
+              }
+            : {})
         })
       }
     );
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error);
+      setError(data.error);
       return;
     }
 
@@ -268,6 +315,8 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
     setCapacity('');
     setStartTime('');
     setEndTime('');
+    setSlotResidenceType('');
+    setSlotGender('');
   }
 
   async function removeSlot(slotId) {
@@ -284,7 +333,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || 'Failed to delete slot');
+      setError(data.error || 'Failed to delete slot');
       return;
     }
 
@@ -296,7 +345,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   ====================== */
   async function addQuestion() {
     if (!qText.trim()) {
-      alert('Question text required');
+      setError('Question text required');
       return;
     }
     const editingId = editingQuestionId;
@@ -317,7 +366,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
       const delData = await delRes.json();
       if (!delRes.ok) {
-        alert(delData.error || 'Failed to update question');
+        setError(delData.error || 'Failed to update question');
         return;
       }
     }
@@ -338,7 +387,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error);
+      setError(data.error);
       return;
     }
 
@@ -375,7 +424,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
         const ruleData = await ruleRes.json();
         if (!ruleRes.ok) {
-          alert(ruleData.error || 'Failed to save eligibility rule');
+          setError(ruleData.error || 'Failed to save eligibility rule');
         } else {
           setQuestionEligibility(prev => ({
             ...prev,
@@ -387,7 +436,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
         }
       } catch (err) {
         console.error('Failed to save eligibility rule', err);
-        alert('Failed to save eligibility rule');
+        setError('Failed to save eligibility rule');
       }
     }
 
@@ -433,7 +482,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || 'Failed to delete question');
+      setError(data.error || 'Failed to delete question');
       return;
     }
 
@@ -458,7 +507,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
   ====================== */
   async function publishForm() {
     if (slots.length === 0 || questions.length === 0) {
-      alert('Add slots and questions first');
+      setError('Add slots and questions first');
       return;
     }
 
@@ -481,13 +530,11 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
         const ruleData = await ruleRes.json();
         if (!ruleRes.ok) {
-          alert(
-            ruleData.error || 'Failed to save department eligibility'
-          );
+          setError(ruleData.error || 'Failed to save department eligibility');
           return;
         }
       } catch (err) {
-        alert(err.message || 'Failed to save department eligibility');
+        setError(err.message || 'Failed to save department eligibility');
         return;
       }
     }
@@ -496,24 +543,24 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
     const isSchedule = publishMode === 'SCHEDULE';
     if (isSchedule) {
       if (!publishAt) {
-        alert('Please select a publish date & time');
+        setError('Please select a publish date & time');
         return;
       }
 
       const publishDate = new Date(publishAt);
       if (Number.isNaN(publishDate.valueOf())) {
-        alert('Invalid publish date & time');
+        setError('Invalid publish date & time');
         return;
       }
 
       if (closeAt) {
         const closeDate = new Date(closeAt);
         if (Number.isNaN(closeDate.valueOf())) {
-          alert('Invalid close date & time');
+          setError('Invalid close date & time');
           return;
         }
         if (closeDate <= publishDate) {
-          alert('Close date must be after publish date');
+          setError('Close date must be after publish date');
           return;
         }
       }
@@ -534,13 +581,14 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
 
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error);
+      setError(data.error);
       return;
     }
 
     clearDraft();
-    alert(isSchedule ? 'Form scheduled' : 'Form published');
-    onExit();
+    setError('');
+    setSuccess(isSchedule ? 'Form scheduled' : 'Form published');
+    navigate('/admin');
   }
 
   return (
@@ -548,7 +596,7 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
       <button
         onClick={() => {
           clearDraft();
-          onExit();
+          navigate('/admin');
         }}
         className="mb-6 text-indigo-600"
       >
@@ -556,6 +604,18 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
       </button>
 
       <h1 className="text-3xl font-semibold mb-6">Create Form</h1>
+
+      {error && (
+        <div className="mb-6 border border-red-200 bg-red-50 text-red-800 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-6 border border-green-200 bg-green-50 text-green-800 px-4 py-3 rounded">
+          {success}
+        </div>
+      )}
 
       {/* Step indicator */}
       <div className="flex items-center gap-3 text-sm text-gray-600 mb-8">
@@ -706,6 +766,98 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
               Define the dates, times, and capacity for each slot students can book.
             </p>
 
+            <label className="flex items-center gap-2 text-sm text-gray-700 mb-4">
+              <input
+                type="checkbox"
+                checked={segmentedSlotsEnabled}
+                onChange={e => {
+                  const enabled = e.target.checked;
+                  setSegmentedSlotsEnabled(enabled);
+                  if (!enabled) {
+                    setActiveSlotSegment('');
+                    setSlotResidenceType('');
+                    setSlotGender('');
+                  }
+                }}
+              />
+              Use separate slot timings for Hosteller/Day Scholar and Boys/Girls
+            </label>
+
+            {segmentedSlotsEnabled && (
+              <div className="border rounded-lg p-3 bg-gray-50">
+                <div className="text-sm font-medium text-gray-800 mb-2">
+                  Choose which category you are adding slots for
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotSegment('DAY_SCHOLAR_BOY')}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      activeSlotSegment === 'DAY_SCHOLAR_BOY'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    Day Scholar • Boy
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotSegment('DAY_SCHOLAR_GIRL')}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      activeSlotSegment === 'DAY_SCHOLAR_GIRL'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    Day Scholar • Girl
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotSegment('HOSTELLER_BOY')}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      activeSlotSegment === 'HOSTELLER_BOY'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    Hosteller • Boy
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotSegment('HOSTELLER_GIRL')}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      activeSlotSegment === 'HOSTELLER_GIRL'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    Hosteller • Girl
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotSegment('')}
+                    className={`px-3 py-1 rounded border text-sm ${
+                      activeSlotSegment === ''
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+
+                <p className="mt-2 text-xs text-gray-600">
+                  Tip: Pick a category above and then add multiple timings. Use
+                  “Custom” only if needed.
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -753,6 +905,40 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
                   className="w-full border border-gray-300 rounded px-3 py-2 focus:border-indigo-500 focus:ring-indigo-500"
                 />
               </div>
+
+              {segmentedSlotsEnabled && activeSlotSegment === '' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Residence type *
+                    </label>
+                    <select
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      value={slotResidenceType}
+                      onChange={e => setSlotResidenceType(e.target.value)}
+                    >
+                      <option value="">Select</option>
+                      <option value="DAY_SCHOLAR">Day Scholar</option>
+                      <option value="HOSTELLER">Hosteller</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Gender *
+                    </label>
+                    <select
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      value={slotGender}
+                      onChange={e => setSlotGender(e.target.value)}
+                    >
+                      <option value="">Select</option>
+                      <option value="BOY">Boy</option>
+                      <option value="GIRL">Girl</option>
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end">
@@ -795,6 +981,11 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
                       <div className="text-xs text-gray-500">
                         Capacity: {slot.max_capacity}
                       </div>
+                      {(slot.gender || slot.residence_type) && (
+                        <div className="text-xs text-gray-500">
+                          Segment: {slot.residence_type || 'ALL'} • {slot.gender || 'ALL'}
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -1148,6 +1339,11 @@ export default function CreateFormWizard({ onExit, formId: initialFormId }) {
                     <div className="text-xs text-gray-500">
                       Capacity: {slot.max_capacity}
                     </div>
+                    {(slot.gender || slot.residence_type) && (
+                      <div className="text-xs text-gray-500">
+                        Segment: {slot.residence_type || 'ALL'} • {slot.gender || 'ALL'}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

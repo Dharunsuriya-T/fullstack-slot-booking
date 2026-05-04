@@ -8,6 +8,7 @@ router.use(requireAuth);
 router.get('/forms', studentController.getForms);
 router.get('/forms/:formId', studentController.getForm);
 router.get('/forms/:formId/slots', studentController.getSlots);
+router.put('/profile', studentController.updateProfile);
 router.post('/forms/:formId/submit', studentController.submitForm);
 router.delete(
   '/forms/:formId/submit',

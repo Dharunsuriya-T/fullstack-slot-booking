@@ -9,7 +9,8 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: 'http://localhost:3000/auth/google/callback'
+      callbackURL:
+        process.env.GOOGLE_CALLBACK_URL
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -23,10 +24,12 @@ passport.use(
 
         const result = await pool.query(
           `
-          INSERT INTO students (email, name, department, year)
-          VALUES ($1, $2, $3, $4)
+          INSERT INTO students (email, name, department, year, email_verified)
+          VALUES ($1, $2, $3, $4, TRUE)
           ON CONFLICT (email)
-          DO UPDATE SET email = EXCLUDED.email
+          DO UPDATE SET
+            email = EXCLUDED.email,
+            email_verified = TRUE
           RETURNING id, email, name, department, year
           `,
           [email, name, department, year]

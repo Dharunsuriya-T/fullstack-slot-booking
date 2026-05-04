@@ -2,7 +2,9 @@ function parseCollegeEmail(email) {
   const match = email.match(/^(.+)\.(\d{2})([a-z]+)@kongu\.edu$/i);
 
   if (!match) {
-    throw new Error('Invalid college email format');
+    const local = String(email).split('@')[0] || '';
+    const safeName = local.replace(/[._-]+/g, ' ').trim() || local;
+    return { name: safeName, department: null, year: null };
   }
 
   const name = match[1];

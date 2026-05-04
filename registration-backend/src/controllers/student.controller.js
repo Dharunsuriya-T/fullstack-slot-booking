@@ -88,24 +88,87 @@ async function getForm(req, res) {
 async function getSlots(req, res) {
   const { formId } = req.params;
 
-  const result = await pool.query(
-    `
-    SELECT
-      id,
-      slot_date,
-      start_time,
-      end_time,
-      max_capacity,
-      current_bookings,
-      (max_capacity - current_bookings) AS remaining
-    FROM slots
-    WHERE form_id = $1
-    ORDER BY slot_date, start_time
-    `,
-    [formId]
-  );
+  try {
+    const studentGender = req.user.gender || null;
+    const studentResidence = req.user.residence_type || null;
 
-  res.json({ slots: result.rows });
+    const hasSegmentedSlotsResult = await pool.query(
+      `
+      SELECT 1
+      FROM slots
+      WHERE form_id = $1
+        AND (gender IS NOT NULL OR residence_type IS NOT NULL)
+      LIMIT 1
+      `,
+      [formId]
+    );
+
+    const hasSegmentedSlots = hasSegmentedSlotsResult.rows.length > 0;
+
+    if (hasSegmentedSlots && (!studentGender || !studentResidence)) {
+      return res.status(400).json({
+        error:
+          'Please complete your profile (gender and residence type) to view available slots.'
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        slot_date,
+        start_time,
+        end_time,
+        max_capacity,
+        current_bookings,
+        (max_capacity - current_bookings) AS remaining
+      FROM slots
+      WHERE form_id = $1
+        AND ($2::text IS NULL OR residence_type IS NULL OR residence_type = $2)
+        AND ($3::text IS NULL OR gender IS NULL OR gender = $3)
+      ORDER BY slot_date, start_time
+      `,
+      [formId, studentResidence, studentGender]
+    );
+
+    res.json({ slots: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function updateProfile(req, res) {
+  const gender = req.body.gender ? String(req.body.gender) : '';
+  const residenceType = req.body.residence_type
+    ? String(req.body.residence_type)
+    : '';
+
+  const allowedGenders = new Set(['BOY', 'GIRL']);
+  const allowedResidence = new Set(['HOSTELLER', 'DAY_SCHOLAR']);
+
+  if (!allowedGenders.has(gender) || !allowedResidence.has(residenceType)) {
+    return res.status(400).json({
+      error:
+        'Invalid profile data. gender must be BOY/GIRL and residence_type must be HOSTELLER/DAY_SCHOLAR.'
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE students
+      SET gender = $2,
+          residence_type = $3
+      WHERE id = $1
+      RETURNING id, email, name, department, year, gender, residence_type
+      `,
+      [req.user.id, gender, residenceType]
+    );
+
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
 async function submitForm(req, res) {
@@ -140,6 +203,7 @@ module.exports = {
   getForms,
   getForm,
   getSlots,
+  updateProfile,
   submitForm,
   withdrawForm
 };

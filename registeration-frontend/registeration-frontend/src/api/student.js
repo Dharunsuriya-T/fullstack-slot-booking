@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 export async function getStudentForms() {
   const res = await fetch(`${API_BASE}/student/forms`, {
@@ -25,7 +25,21 @@ export async function getSlots(formId) {
   );
 
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
   return data.slots;
+}
+
+export async function updateStudentProfile(payload) {
+  const res = await fetch(`${API_BASE}/student/profile`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.user;
 }
 
 export async function submitForm(formId, payload) {
@@ -39,6 +53,16 @@ export async function submitForm(formId, payload) {
     }
   );
 
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function logout() {
+  const res = await fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include'
+  });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
