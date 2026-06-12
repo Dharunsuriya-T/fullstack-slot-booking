@@ -288,7 +288,7 @@ export default function StudentForm() {
       )}
 
       <button
-        onClick={onBack}
+        onClick={() => navigate('/')}
         className="text-indigo-600 mb-6"
       >
         ← Back

@@ -178,7 +178,7 @@ export default function StudentDashboard({ user }) {
                     bg-indigo-600 text-white
                     hover:bg-indigo-700
                   "
-                  onClick={() => onOpenForm(form.id)}
+                  onClick={() => navigate(`/form/${form.id}`)}
                 >
                   Apply
                 </button>
