@@ -78,17 +78,22 @@ app.get('/health', async (req, res) => {
 app.use(
   cors({
     origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
       const raw =
         process.env.FRONTEND_ORIGINS ||
         process.env.FRONTEND_URL;
       const allowed = raw
-        ? raw.split(',').map((v) => v.trim()).filter(Boolean)
+        ? raw.split(',').map((v) => v.trim().replace(/\/$/, '')).filter(Boolean)
         : [];
 
-      if (!origin) return callback(null, true);
-      if (allowed.includes(origin)) return callback(null, true);
+      const normalizedOrigin = origin.trim().replace(/\/$/, '');
+      if (allowed.includes(normalizedOrigin)) {
+        return callback(null, true);
+      }
 
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`[CORS_BLOCKED] Request from origin ${origin} blocked. Allowed:`, allowed);
+      callback(null, false);
     },
     credentials: true
   })
