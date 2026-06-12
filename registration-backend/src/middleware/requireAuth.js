@@ -1,44 +1,50 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
+const { UnauthorizedError } = require('../utils/appError');
 
 async function requireAuth(req, res, next) {
   const token = req.cookies.token;
 
   if (!token) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return next(new UnauthorizedError('Not authenticated'));
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const studentResult = await pool.query(
+    const result = await pool.query(
       `
-      SELECT id, email, name, department, year, gender, residence_type, email_verified
-      FROM students
-      WHERE id = $1
+      SELECT s.id, s.email, s.name, s.department, s.year, s.gender, s.residence_type, s.email_verified,
+             EXISTS (
+               SELECT 1 FROM admins a WHERE LOWER(a.email) = LOWER(s.email)
+             ) AS is_admin
+      FROM students s
+      WHERE s.id = $1
       `,
       [decoded.studentId]
     );
 
-    if (studentResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid user' });
+    if (result.rows.length === 0) {
+      return next(new UnauthorizedError('Invalid user'));
     }
 
-    const student = studentResult.rows[0];
-
-    const adminResult = await pool.query(
-      `SELECT 1 FROM admins WHERE email = $1`,
-      [student.email]
-    );
+    const row = result.rows[0];
 
     req.user = {
-      ...student,
-      role: adminResult.rows.length > 0 ? 'admin' : 'student'
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      department: row.department,
+      year: row.year,
+      gender: row.gender,
+      residence_type: row.residence_type,
+      email_verified: row.email_verified,
+      role: row.is_admin ? 'admin' : 'student'
     };
 
     next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
+  } catch (err) {
+    return next(new UnauthorizedError('Invalid token'));
   }
 }
 

@@ -7,8 +7,13 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const parseCollegeEmail = require('../utils/parseEmail');
 const crypto = require('crypto');
-
 const sgMail = require('@sendgrid/mail');
+
+const catchAsync = require('../utils/catchAsync');
+const { BadRequestError, UnauthorizedError, ConflictError } = require('../utils/appError');
+const validate = require('../middleware/validate');
+const schemas = require('../validations/validation.schemas');
+
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
@@ -80,29 +85,16 @@ router.get(
   }),
   (req, res) => {
     setAuthCookie(res, req.user.token);
-
     res.redirect(frontendUrl());
   }
 );
 
-router.post('/register', async (req, res) => {
-  try {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    if (!email.endsWith('@kongu.edu')) {
-      return res.status(400).json({ error: 'Only kongu.edu emails are allowed' });
-    }
-
-    if (password.length < 8) {
-      return res
-        .status(400)
-        .json({ error: 'Password must be at least 8 characters' });
-    }
+router.post(
+  '/register',
+  validate(schemas.register),
+  catchAsync(async (req, res) => {
+    const email = req.body.email;
+    const password = req.body.password;
 
     const { name, department, year } = parseCollegeEmail(email);
     const passwordHash = await bcrypt.hash(password, 12);
@@ -116,7 +108,7 @@ router.post('/register', async (req, res) => {
     if (existing.rows.length > 0) {
       const row = existing.rows[0];
       if (row.password_hash) {
-        return res.status(400).json({ error: 'Account already exists' });
+        throw new ConflictError('Account already exists');
       }
 
       const updated = await pool.query(
@@ -168,19 +160,15 @@ router.post('/register', async (req, res) => {
 
     setAuthCookie(res, token);
     res.json({ user: student });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
-router.post('/login', async (req, res) => {
-  try {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
+router.post(
+  '/login',
+  validate(schemas.login),
+  catchAsync(async (req, res) => {
+    const email = req.body.email;
+    const password = req.body.password;
 
     const result = await pool.query(
       `
@@ -192,19 +180,17 @@ router.post('/login', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      throw new UnauthorizedError('Invalid email or password');
     }
 
     const student = result.rows[0];
     if (!student.password_hash) {
-      return res.status(400).json({
-        error: 'This account uses Google sign-in. Please use Google login.'
-      });
+      throw new BadRequestError('This account uses Google sign-in. Please use Google login.');
     }
 
     const ok = await bcrypt.compare(password, student.password_hash);
     if (!ok) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      throw new UnauthorizedError('Invalid email or password');
     }
 
     const token = jwt.sign(
@@ -224,17 +210,14 @@ router.post('/login', async (req, res) => {
         email_verified: student.email_verified
       }
     });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
+router.post(
+  '/forgot-password',
+  validate(schemas.forgotPassword),
+  catchAsync(async (req, res) => {
+    const email = req.body.email;
 
     const result = await pool.query(
       `
@@ -271,22 +254,15 @@ router.post('/forgot-password', async (req, res) => {
 
     await sendPasswordResetEmail(email, token);
     res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
-router.post('/reset-password', async (req, res) => {
-  try {
-    const token = String(req.body.token || '').trim();
-    const newPassword = String(req.body.password || '');
-
-    if (!token || !newPassword) {
-      return res.status(400).json({ error: 'Token and new password are required' });
-    }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
+router.post(
+  '/reset-password',
+  validate(schemas.resetPassword),
+  catchAsync(async (req, res) => {
+    const token = req.body.token;
+    const newPassword = req.body.password;
 
     const tokenHash = sha256(token);
     const result = await pool.query(
@@ -301,7 +277,7 @@ router.post('/reset-password', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'Invalid or expired token' });
+      throw new BadRequestError('Invalid or expired token');
     }
 
     const studentId = result.rows[0].id;
@@ -318,16 +294,15 @@ router.post('/reset-password', async (req, res) => {
     );
 
     res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
-router.get('/verify-email', async (req, res) => {
-  try {
+router.get(
+  '/verify-email',
+  catchAsync(async (req, res) => {
     const token = String(req.query.token || '').trim();
     if (!token) {
-      return res.status(400).json({ error: 'Token is required' });
+      throw new BadRequestError('Token is required');
     }
 
     const tokenHash = sha256(token);
@@ -343,7 +318,7 @@ router.get('/verify-email', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'Invalid or expired token' });
+      throw new BadRequestError('Invalid or expired token');
     }
 
     const studentId = result.rows[0].id;
@@ -359,20 +334,20 @@ router.get('/verify-email', async (req, res) => {
     );
 
     res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
-router.post('/resend-verification', requireAuth, async (req, res) => {
-  try {
+router.post(
+  '/resend-verification',
+  requireAuth,
+  catchAsync(async (req, res) => {
     const email = req.user.email;
     const result = await pool.query(
       `SELECT id, email_verified FROM students WHERE id = $1`,
       [req.user.id]
     );
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid user' });
+      throw new UnauthorizedError('Invalid user');
     }
 
     if (result.rows[0].email_verified) {
@@ -394,10 +369,8 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
 
     await sendVerificationEmail(email, token);
     res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  })
+);
 
 router.post('/logout', (req, res) => {
   const isProd = process.env.NODE_ENV === 'production';

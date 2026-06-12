@@ -3,6 +3,10 @@ const router = express.Router();
 
 const requireAuth = require('../middleware/requireAuth');
 const requireAdmin = require('../middleware/requireAdmin');
+const validate = require('../middleware/validate');
+const schemas = require('../validations/validation.schemas');
+const catchAsync = require('../utils/catchAsync');
+const { BadRequestError } = require('../utils/appError');
 
 const adminController = require('../controllers/admin.controller');
 const { getFormResponses } = require('../services/adminResponse.service');
@@ -30,14 +34,14 @@ router.delete('/forms/:formId', adminController.deleteForm);
 /* ======================
    FORM CREATION / EDITING
 ====================== */
-router.post('/forms', adminController.createForm);
-router.post('/forms/:formId/questions', adminController.addQuestion);
+router.post('/forms', validate(schemas.createForm), adminController.createForm);
+router.post('/forms/:formId/questions', validate(schemas.addQuestion), adminController.addQuestion);
 router.delete(
   '/forms/:formId/questions/:questionId',
   adminController.deleteQuestion
 );
 router.post('/forms/:formId/eligibility', adminController.addEligibilityRule);
-router.post('/forms/:formId/slots', adminController.addSlot);
+router.post('/forms/:formId/slots', validate(schemas.addSlot), adminController.addSlot);
 router.delete(
   '/forms/:formId/slots/:slotId',
   adminController.deleteSlot
@@ -46,50 +50,38 @@ router.delete(
 /* ======================
    RESPONSES & EXPORT
 ====================== */
-router.get('/forms/:formId/responses', async (req, res) => {
-  try {
-    const data = await getFormResponses(
-      req.params.formId,
-      req.query
-    );
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.get('/forms/:formId/responses', catchAsync(async (req, res) => {
+  const data = await getFormResponses(
+    req.params.formId,
+    req.query
+  );
+  res.json(data);
+}));
 
-router.get('/forms/:formId/export/csv', async (req, res) => {
-  try {
-    const csv = await exportFormResponsesCSV(req.params.formId);
-    res.header('Content-Type', 'text/csv');
-    res.attachment(`form-${req.params.formId}-responses.csv`);
-    res.send(csv);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.get('/forms/:formId/export/csv', catchAsync(async (req, res) => {
+  const csv = await exportFormResponsesCSV(req.params.formId);
+  res.header('Content-Type', 'text/csv');
+  res.attachment(`form-${req.params.formId}-responses.csv`);
+  res.send(csv);
+}));
 
 /* ======================
    EMAIL AUTOMATION
 ====================== */
-router.post('/forms/:formId/send-test-links', async (req, res) => {
+router.post('/forms/:formId/send-test-links', catchAsync(async (req, res) => {
   const { student_ids, subject, message } = req.body;
 
   if (!student_ids || !subject || !message) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    throw new BadRequestError('Missing required fields');
   }
 
-  try {
-    await sendTestLinkEmails({
-      formId: req.params.formId,
-      studentIds: student_ids,
-      subject,
-      message
-    });
-    res.json({ message: 'Emails processed' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  await sendTestLinkEmails({
+    formId: req.params.formId,
+    studentIds: student_ids,
+    subject,
+    message
+  });
+  res.json({ message: 'Emails processed' });
+}));
 
 module.exports = router;
