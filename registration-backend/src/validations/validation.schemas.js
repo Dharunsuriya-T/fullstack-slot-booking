@@ -7,7 +7,8 @@ const register = z.object({
       .trim()
       .toLowerCase()
       .email('Invalid email address')
-      .endsWith('@kongu.edu', 'Only @kongu.edu emails are allowed'),
+      .endsWith('@kongu.edu', 'Only @kongu.edu emails are allowed')
+      .regex(/^.+\.\d{2}[a-z]+@kongu\.edu$/i, 'Email must be in student format: name.yeardept@kongu.edu (e.g. john.23cse@kongu.edu)'),
     password: z
       .string({ required_error: 'Password is required' })
       .min(8, 'Password must be at least 8 characters')

@@ -1,4 +1,13 @@
 require('dotenv').config();
+
+// Production-Grade Startup Config Validation
+const requiredEnv = ['DATABASE_URL', 'JWT_SECRET', 'FRONTEND_URL'];
+const missingEnv = requiredEnv.filter((k) => !process.env[k]);
+if (missingEnv.length > 0) {
+  console.error(`[CRITICAL] Missing required environment variables at startup: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
