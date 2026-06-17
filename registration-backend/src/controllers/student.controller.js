@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const submissionService = require('../services/submission.service');
 const catchAsync = require('../utils/catchAsync');
 const { NotFoundError, BadRequestError } = require('../utils/appError');
+const { getCache, setCache, deleteCache } = require('../utils/cache');
 
 const getForms = catchAsync(async (req, res) => {
   const result = await pool.query(
@@ -29,37 +30,55 @@ const getForms = catchAsync(async (req, res) => {
 const getForm = catchAsync(async (req, res) => {
   const { formId } = req.params;
 
-  const formResult = await pool.query(
-    `
-    SELECT id, title, description, test_date, status
-    FROM forms
-    WHERE id = $1
-    `,
-    [formId]
-  );
+  const cacheKey = `form:${formId}:details`;
+  let cachedDetails = await getCache(cacheKey);
 
-  if (formResult.rows.length === 0) {
-    throw new NotFoundError('Form not found');
+  let form, questions, eligibility_rules;
+
+  if (cachedDetails) {
+    form = cachedDetails.form;
+    questions = cachedDetails.questions;
+    eligibility_rules = cachedDetails.eligibility_rules;
+  } else {
+    const formResult = await pool.query(
+      `
+      SELECT id, title, description, test_date, status
+      FROM forms
+      WHERE id = $1
+      `,
+      [formId]
+    );
+
+    if (formResult.rows.length === 0) {
+      throw new NotFoundError('Form not found');
+    }
+
+    form = formResult.rows[0];
+
+    const questionsResult = await pool.query(
+      `
+      SELECT id, question_text, input_type, is_required
+      FROM questions
+      WHERE form_id = $1
+      ORDER BY created_at
+      `,
+      [formId]
+    );
+    questions = questionsResult.rows;
+
+    const rulesResult = await pool.query(
+      `
+      SELECT source, question_id, student_field, operator, value
+      FROM eligibility_rules
+      WHERE form_id = $1
+      `,
+      [formId]
+    );
+    eligibility_rules = rulesResult.rows;
+
+    // Cache the static form structure/details for 24 hours
+    await setCache(cacheKey, { form, questions, eligibility_rules }, 86400);
   }
-
-  const questionsResult = await pool.query(
-    `
-    SELECT id, question_text, input_type, is_required
-    FROM questions
-    WHERE form_id = $1
-    ORDER BY created_at
-    `,
-    [formId]
-  );
-
-  const rulesResult = await pool.query(
-    `
-    SELECT source, question_id, student_field, operator, value
-    FROM eligibility_rules
-    WHERE form_id = $1
-    `,
-    [formId]
-  );
 
   const submittedResult = await pool.query(
     `
@@ -72,9 +91,9 @@ const getForm = catchAsync(async (req, res) => {
   );
 
   res.json({
-    form: formResult.rows[0],
-    questions: questionsResult.rows,
-    eligibility_rules: rulesResult.rows,
+    form,
+    questions,
+    eligibility_rules,
     already_submitted: submittedResult.rows.length > 0
   });
 });
@@ -103,26 +122,35 @@ const getSlots = catchAsync(async (req, res) => {
     );
   }
 
-  const result = await pool.query(
-    `
-    SELECT
-      id,
-      slot_date,
-      start_time,
-      end_time,
-      max_capacity,
-      current_bookings,
-      (max_capacity - current_bookings) AS remaining
-    FROM slots
-    WHERE form_id = $1
-      AND ($2::text IS NULL OR residence_type IS NULL OR residence_type = $2)
-      AND ($3::text IS NULL OR gender IS NULL OR gender = $3)
-    ORDER BY slot_date, start_time
-    `,
-    [formId, studentResidence, studentGender]
-  );
+  const cacheKey = `form:${formId}:slots:gender:${studentGender}:residence:${studentResidence}`;
+  let slots = await getCache(cacheKey);
 
-  res.json({ slots: result.rows });
+  if (!slots) {
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        slot_date,
+        start_time,
+        end_time,
+        max_capacity,
+        current_bookings,
+        (max_capacity - current_bookings) AS remaining
+      FROM slots
+      WHERE form_id = $1
+        AND ($2::text IS NULL OR residence_type IS NULL OR residence_type = $2)
+        AND ($3::text IS NULL OR gender IS NULL OR gender = $3)
+      ORDER BY slot_date, start_time
+      `,
+      [formId, studentResidence, studentGender]
+    );
+    slots = result.rows;
+    // Cache slots with a short TTL (5 seconds) to handle booking rush load.
+    // Bookings reactively clear this cache immediately.
+    await setCache(cacheKey, slots, 5);
+  }
+
+  res.json({ slots });
 });
 
 const updateProfile = catchAsync(async (req, res) => {
@@ -150,6 +178,9 @@ const updateProfile = catchAsync(async (req, res) => {
     `,
     [req.user.id, gender, residenceType]
   );
+
+  // Invalidate user session cache so profile changes are reflected immediately
+  await deleteCache(`user:${req.user.id}`);
 
   res.json({ user: result.rows[0] });
 });

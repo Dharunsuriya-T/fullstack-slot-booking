@@ -1,4 +1,5 @@
 const adminService = require('../services/admin.service');
+const schedulerService = require('../services/scheduler.service');
 const catchAsync = require('../utils/catchAsync');
 
 /* ======================
@@ -23,6 +24,9 @@ const publishForm = catchAsync(async (req, res) => {
           closeAt: close_at
         })
       : await adminService.publishForm(req.params.formId);
+
+  // Clear the cache for this form so the status update is visible to students
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ form });
 });
 
@@ -31,6 +35,7 @@ const publishForm = catchAsync(async (req, res) => {
 ====================== */
 const closeForm = catchAsync(async (req, res) => {
   const form = await adminService.closeForm(req.params.formId);
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ form });
 });
 
@@ -39,6 +44,7 @@ const closeForm = catchAsync(async (req, res) => {
 ====================== */
 const deleteForm = catchAsync(async (req, res) => {
   await adminService.deleteForm(req.params.formId);
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ message: 'Form deleted' });
 });
 
@@ -58,6 +64,7 @@ const addQuestion = catchAsync(async (req, res) => {
     req.params.formId,
     req.body
   );
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ question });
 });
 
@@ -66,6 +73,7 @@ const addEligibilityRule = catchAsync(async (req, res) => {
     req.params.formId,
     req.body
   );
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ rule });
 });
 
@@ -74,6 +82,7 @@ const addSlot = catchAsync(async (req, res) => {
     form_id: req.params.formId,
     ...req.body
   });
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ slot });
 });
 
@@ -87,6 +96,7 @@ const deleteQuestion = catchAsync(async (req, res) => {
     req.params.formId,
     req.params.questionId
   );
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ message: 'Question deleted' });
 });
 
@@ -95,6 +105,7 @@ const deleteSlot = catchAsync(async (req, res) => {
     req.params.formId,
     req.params.slotId
   );
+  await schedulerService.clearFormCache(req.params.formId);
   res.json({ message: 'Slot deleted' });
 });
 

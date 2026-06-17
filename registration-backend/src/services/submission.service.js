@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { checkEligibility } = require('./eligibility.service');
+const schedulerService = require('./scheduler.service');
 
 let formResponseColumnsSupport;
 
@@ -180,6 +181,10 @@ async function submitForm({ formId, studentId, slotId, answers }) {
     }
 
     await client.query('COMMIT');
+
+    // Clear form slots cache reactively to reflect updated booking counts immediately
+    await schedulerService.clearFormCache(formId);
+
     return { success: true };
 
   } catch (err) {
@@ -260,6 +265,10 @@ async function withdrawForm({ formId, studentId }) {
     }
 
     await client.query('COMMIT');
+
+    // Clear form slots cache reactively to reflect updated booking counts immediately
+    await schedulerService.clearFormCache(formId);
+
     return { success: true };
   } catch (err) {
     await client.query('ROLLBACK');
